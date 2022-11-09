@@ -1,0 +1,127 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS CloudFormation template for compute of LAMP Gorgeous Cupcake Application."
+Parameters:
+  AppName:
+    Description: Name of the Application.
+    Type: String
+    Default: lamp-app
+  DBName:
+    Description: Database name.
+    Type: String
+    Default: gorgeouscupcakes
+  DBHost:
+    Description: Database host.
+    Type: String
+  DBUser:
+    Description: Database user.
+    Type: String
+    Default: root
+  DBPassword:
+    Description: Password for the database.
+    Type: String
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t1.micro
+      - t2.micro
+  InstanceAMI:
+    Description: EC2 instance AMI
+    Type: String
+    Default: ami-09d3b3274b6c5d4aa
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.
+  SSHLocation:
+    Description: " The IP address range that can be used to SSH to the EC2 instances"
+    Type: String
+    MinLength: "9"
+    MaxLength: "18"
+    Default: 0.0.0.0/0
+    AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+
+Resources:
+  BasicParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Join ["-", [database-password, !Ref AppName]]
+      Type: String
+      Value: !Ref DBPassword
+      Tier: Standard
+      Description: SSM Parameter for db password.
+
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable access via ports 22 and 80.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Join ["-", [sg-app, !Ref AppName]]
+
+  MyPublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: !Ref KeyName
+      ImageId: !Ref InstanceAMI
+      InstanceType: !Ref InstanceType
+      SecurityGroupIds:
+        - !Ref MySecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              # This script will configure the server automatically...
+              # Update packages
+              sudo yum update -y
+              # Install php
+              sudo amazon-linux-extras install php8.0 -y
+              # Install git
+              sudo yum install git -y
+              # Install apache
+              sudo yum install -y httpd
+              # Enable apache service
+              sudo systemctl enable httpd
+              sudo systemctl start httpd
+              cd /tmp
+              # Obtain repository with source PHP files
+              git clone https://github.com/aliAskariAu/public-lamp-cloudformation.git
+              # Replace config variables from secrets
+              sed -e "s~\$HOST~'${var_host}'~g" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php" > "tmp.json" && mv "tmp.json" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php"
+              sed -e "s~\$USER~'${var_user}'~g" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php" > "tmp.json" && mv "tmp.json" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php"
+              sed -e "s~\$PASSWORD~'${var_password}'~g" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php" > "tmp.json" && mv "tmp.json" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php"
+              sed -e "s~\$DATABASE~'${var_database}'~g" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php" > "tmp.json" && mv "tmp.json" "/tmp/public-lamp-cloudformation/gorgeous_cupcakes/model/database.php"
+              # Copy PHP files to expected location
+              sudo cp -r /tmp/public-lamp-cloudformation/gorgeous_cupcakes/* /var/www/html/
+              # Restart apache to expose web server
+              sudo systemctl stop httpd
+              sudo systemctl start httpd
+
+            - var_database:
+                Ref: DBName
+              var_host:
+                Ref: DBHost
+              var_user:
+                Ref: DBUser
+              var_password:
+                Ref: DBPassword
+      Tags:
+        - Key: Name
+          Value: !Join ["-", [ec2, !Ref AppName]]

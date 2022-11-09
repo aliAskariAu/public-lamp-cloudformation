@@ -1,0 +1,64 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 'AWS CloudFormation template for storage of LAMP Gorgeous Cupcake Application.'
+
+Parameters:
+  AppName:
+    Description: Name of the Application.
+    Type: String
+    Default: lamp-app
+  DBName:
+    Description: Database name.
+    Type: String
+    Default: gorgeouscupcakes
+  DBPassword:
+    Description: Password for the database.
+    Type: String
+  InstanceType:
+    Description: RDS instance type
+    Type: String
+    Default: db.t3.micro
+    AllowedValues:
+    - db.t3.micro
+
+Resources:
+  MyRDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable access for database
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Join ["-", [sg-rds, !Ref AppName]]
+
+  MyRDS:
+    Type: AWS::RDS::DBInstance
+    Properties: 
+      AllocatedStorage: 10
+      AllowMajorVersionUpgrade: true
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 0
+      DBInstanceClass: db.t3.micro
+      DBInstanceIdentifier: !Ref DBName
+      DBParameterGroupName: default.mysql8.0
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      EnableIAMDatabaseAuthentication: false
+      EnablePerformanceInsights: false
+      Engine: mysql
+      EngineVersion: 8.0.28
+      MasterUsername: root
+      MasterUserPassword: !Ref DBPassword
+      MaxAllocatedStorage: 20
+      MonitoringInterval: 0
+      MultiAZ: false
+      Port: 3306
+      PubliclyAccessible: true
+      StorageType: gp2
+      VPCSecurityGroups: 
+        - !GetAtt MyRDSSecurityGroup.GroupId
